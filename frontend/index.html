@@ -153,24 +153,103 @@
     color: var(--green);
     font-weight: 600;
   }
+
+  .gate {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
 </style>
 </head>
 <body>
 
-<h1>🔒 Rift Manager</h1>
-<p class="subtitle">Audit de sécurité gratuit pour ton site en 10 secondes</p>
-
-<div class="scan-box">
-  <input type="text" id="urlInput" placeholder="exemple.com" />
-  <button id="scanBtn" onclick="runScan()">Scanner</button>
+<div id="gate" class="gate">
+  <h1>🔒 Rift Manager</h1>
+  <p class="subtitle">Accès privé — entre ton code pour continuer</p>
+  <div class="scan-box" style="max-width:320px;">
+    <input type="password" id="accessCodeInput" placeholder="Code d'accès" />
+    <button id="unlockBtn" onclick="checkAccess()">Entrer</button>
+  </div>
+  <p id="gateError" style="color:var(--red); display:none; margin-top:14px;">Code incorrect</p>
 </div>
 
-<div id="loading">Scan en cours...</div>
+<div id="app" style="display:none; width:100%; display:flex; flex-direction:column; align-items:center;">
+  <h1>🔒 Rift Manager</h1>
+  <p class="subtitle">Audit de sécurité gratuit pour ton site en 10 secondes</p>
 
-<div id="result"></div>
+  <div class="scan-box">
+    <input type="text" id="urlInput" placeholder="exemple.com" />
+    <button id="scanBtn" onclick="runScan()">Scanner</button>
+  </div>
+
+  <div id="loading">Scan en cours...</div>
+
+  <div id="result"></div>
+</div>
 
 <script>
-const API_URL = "https://api.rift-manager.pro/scan";
+const API_BASE = "https://api.rift-manager.pro";
+const API_URL = API_BASE + "/scan";
+const VERIFY_URL = API_BASE + "/verify-access";
+
+// ---------- Écran de connexion ----------
+
+function getStoredCode() {
+  return sessionStorage.getItem("rift_access_code") || "";
+}
+
+async function checkAccess() {
+  const code = document.getElementById("accessCodeInput").value.trim();
+  const btn = document.getElementById("unlockBtn");
+  const errorMsg = document.getElementById("gateError");
+
+  btn.disabled = true;
+  errorMsg.style.display = "none";
+
+  try {
+    const resp = await fetch(VERIFY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code })
+    });
+
+    if (!resp.ok) throw new Error("invalid");
+
+    sessionStorage.setItem("rift_access_code", code);
+    document.getElementById("gate").style.display = "none";
+    document.getElementById("app").style.display = "flex";
+  } catch (err) {
+    errorMsg.style.display = "block";
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.getElementById("accessCodeInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") checkAccess();
+});
+
+// Si un code valide est déjà en mémoire pour cette session, on tente de passer directement
+(async function tryAutoUnlock() {
+  const stored = getStoredCode();
+  if (!stored) return;
+  try {
+    const resp = await fetch(VERIFY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: stored })
+    });
+    if (resp.ok) {
+      document.getElementById("gate").style.display = "none";
+      document.getElementById("app").style.display = "flex";
+    }
+  } catch (err) {
+    // on reste sur l'écran de connexion en cas d'erreur
+  }
+})();
+
+// ---------- Outil de scan ----------
 
 const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
 
@@ -224,7 +303,10 @@ async function runScan() {
   try {
     const resp = await fetch(API_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Access-Code": getStoredCode()
+      },
       body: JSON.stringify({ url })
     });
 

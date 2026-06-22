@@ -4,17 +4,18 @@ Backend FastAPI : scanne un domaine et retourne un score de sécurité /100
 avec un détail précis de chaque vulnérabilité détectée.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import httpx
 import ssl
 import socket
+import os
 import dns.resolver
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-app = FastAPI(title="Rift Manager Security Scanner", version="0.2.0")
+app = FastAPI(title="Rift Manager Security Scanner", version="0.3.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,6 +23,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Code d'accès pour fermer temporairement le SaaS au grand public.
+# Défini via une variable d'environnement sur Railway (RIFT_ACCESS_CODE).
+# Si la variable n'est pas définie, le site reste ouvert (utile en dev local).
+ACCESS_CODE = os.environ.get("RIFT_ACCESS_CODE")
+
+
+def verify_access_code(x_access_code: str | None) -> bool:
+    """Vérifie le code d'accès envoyé par le frontend."""
+    if not ACCESS_CODE:
+        return True  # pas de protection configurée
+    return x_access_code == ACCESS_CODE
+
+
+class AccessCheckRequest(BaseModel):
+    code: str
 
 
 class ScanRequest(BaseModel):
@@ -727,8 +744,19 @@ async def check_dangerous_http_methods(url: str):
 
 # ---------- Endpoint principal ----------
 
+@app.post("/verify-access")
+async def verify_access(request: AccessCheckRequest):
+    """Vérifie un code d'accès envoyé par le frontend (écran de connexion)."""
+    if verify_access_code(request.code):
+        return {"valid": True}
+    raise HTTPException(status_code=401, detail="Code d'accès invalide")
+
+
 @app.post("/scan", response_model=ScanResult)
-async def scan(request: ScanRequest):
+async def scan(request: ScanRequest, x_access_code: str | None = Header(default=None)):
+    if not verify_access_code(x_access_code):
+        raise HTTPException(status_code=401, detail="Accès refusé : code invalide ou manquant")
+
     url = normalize_url(request.url)
     parsed = urlparse(url)
     domain = parsed.netloc or parsed.path
