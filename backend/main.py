@@ -325,15 +325,41 @@ async def check_ssl_certificate(domain: str):
 
 
 async def check_exposed_files(url: str):
-    """Teste l'exposition de fichiers/chemins sensibles courants."""
+    """Teste l'exposition de fichiers/chemins sensibles courants.
+
+    Beaucoup de sites (SPA React/Vue, certains CMS) renvoient un statut 200
+    avec leur page d'accueil pour N'IMPORTE QUELLE URL au lieu d'un vrai 404.
+    On détecte ce comportement en testant d'abord une URL bidon : si elle
+    renvoie aussi 200 avec un contenu identique, on sait que le site a un
+    comportement "catch-all" et on ignore les faux positifs qui en découlent.
+    """
     exposed = []
     vulns = []
     try:
         async with httpx.AsyncClient(follow_redirects=True, timeout=6) as client:
+            # Détection du comportement catch-all (faux positif systématique)
+            probe_path = "/this-path-should-not-exist-rift-manager-probe-87263"
+            baseline_content = None
+            baseline_length = None
+            try:
+                probe_resp = await client.get(url.rstrip("/") + probe_path)
+                if probe_resp.status_code == 200:
+                    baseline_content = probe_resp.content
+                    baseline_length = len(probe_resp.content)
+            except Exception:
+                pass
+
             for path, description in SENSITIVE_PATHS.items():
                 try:
                     resp = await client.get(url.rstrip("/") + path)
-                    if resp.status_code == 200 and len(resp.content) > 0:
+                    content_type = resp.headers.get("content-type", "").lower()
+                    looks_like_html = "text/html" in content_type
+
+                    is_catch_all_response = resp.status_code == 200 and (
+                        looks_like_html  # un vrai .env/.sql/.json n'est jamais servi en HTML
+                        or (baseline_content is not None and resp.content == baseline_content)
+                    )
+                    if resp.status_code == 200 and len(resp.content) > 0 and not is_catch_all_response:
                         exposed.append(path)
                         vulns.append(make_vuln(
                             check_id=f"exposed_{path.strip('/').replace('/', '_')}",
@@ -349,12 +375,17 @@ async def check_exposed_files(url: str):
                         ))
                 except Exception:
                     continue
+        catch_all_detected = baseline_content is not None and len(exposed) == 0
+        detail = "Aucun fichier sensible exposé détecté"
+        if exposed:
+            detail = f"{len(exposed)} fichier(s) potentiellement exposé(s)"
+        elif catch_all_detected:
+            detail = "Aucun fichier sensible exposé (site à routage catch-all détecté, scan ajusté en conséquence)"
+
         return {
             "passed": len(exposed) == 0,
             "exposed_paths": exposed,
-            "detail": "Aucun fichier sensible exposé détecté"
-            if not exposed
-            else f"{len(exposed)} fichier(s) potentiellement exposé(s)",
+            "detail": detail,
         }, vulns
     except Exception as exc:
         return {"passed": True, "exposed_paths": [], "detail": f"Scan incomplet ({exc})"}, vulns
