@@ -52,7 +52,7 @@ async function loadHistory() {
     }
 
     container.innerHTML = scans.map(s => `
-      <div class="history-row">
+      <a href="scan-detail.html?id=${s.id}" class="history-row card-hoverable" style="text-decoration:none; color:inherit;">
         <div>
           <div class="target">${s.target}</div>
           <div class="date">${formatDate(s.created_at)}</div>
@@ -60,7 +60,7 @@ async function loadHistory() {
         <div class="history-score" style="color:${scoreColor(s.score)};">
           ${s.score}/100 — ${s.grade}
         </div>
-      </div>
+      </a>
     `).join("");
   } catch (err) {
     container.innerHTML = `<p style="color:var(--red)">Erreur : ${err.message}</p>`;
