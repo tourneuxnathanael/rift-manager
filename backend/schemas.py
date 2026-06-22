@@ -40,6 +40,15 @@ class ScanHistoryItem(BaseModel):
         from_attributes = True
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
 class UpdateProfileRequest(BaseModel):
     email: EmailStr | None = None
     current_password: str | None = None

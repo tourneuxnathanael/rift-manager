@@ -10,13 +10,15 @@ import httpx
 import ssl
 import socket
 import dns.resolver
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from urllib.parse import urlparse
+import secrets
 
 from database import Base, engine, get_db
 import models
 import schemas
 import auth
+import email_utils
 
 app = FastAPI(title="Rift Manager Security Scanner", version="1.0.0")
 
@@ -577,6 +579,67 @@ def login(request: schemas.LoginRequest, db: Session = Depends(get_db)):
 
     token = auth.create_access_token(user.id)
     return schemas.TokenResponse(access_token=token)
+
+
+RESET_TOKEN_EXPIRE_MINUTES = 30
+
+
+@app.post("/auth/forgot-password")
+async def forgot_password(request: schemas.ForgotPasswordRequest, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == request.email).first()
+
+    # Toujours renvoyer le même message, qu'un compte existe ou non,
+    # pour éviter de révéler quels emails sont inscrits (énumération de comptes).
+    generic_response = {"status": "ok", "detail": "Si un compte existe avec cet email, un lien de réinitialisation a été envoyé."}
+
+    if not user:
+        return generic_response
+
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_EXPIRE_MINUTES)
+
+    reset_token = models.PasswordResetToken(user_id=user.id, token=token, expires_at=expires_at)
+    db.add(reset_token)
+    db.commit()
+
+    reset_link = f"https://www.rift-manager.pro/reset-password.html?token={token}"
+    html = (
+        f"<p>Tu as demandé à réinitialiser ton mot de passe Rift Manager.</p>"
+        f"<p><a href='{reset_link}'>Clique ici pour choisir un nouveau mot de passe</a></p>"
+        f"<p>Ce lien expire dans {RESET_TOKEN_EXPIRE_MINUTES} minutes. Si tu n'es pas à l'origine "
+        f"de cette demande, tu peux ignorer cet email.</p>"
+    )
+    await email_utils.send_email(user.email, "Réinitialisation de ton mot de passe Rift Manager", html)
+
+    return generic_response
+
+
+@app.post("/auth/reset-password")
+def reset_password(request: schemas.ResetPasswordRequest, db: Session = Depends(get_db)):
+    reset_token = (
+        db.query(models.PasswordResetToken)
+        .filter(models.PasswordResetToken.token == request.token)
+        .first()
+    )
+
+    if not reset_token or reset_token.used:
+        raise HTTPException(status_code=400, detail="Lien de réinitialisation invalide ou déjà utilisé")
+
+    if reset_token.expires_at.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Lien de réinitialisation expiré, refais une demande")
+
+    if len(request.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Le mot de passe doit contenir au moins 8 caractères")
+
+    user = db.query(models.User).filter(models.User.id == reset_token.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+
+    user.hashed_password = auth.hash_password(request.new_password)
+    reset_token.used = True
+    db.commit()
+
+    return {"status": "ok", "detail": "Mot de passe mis à jour, tu peux te connecter"}
 
 
 @app.get("/auth/me", response_model=schemas.UserOut)
