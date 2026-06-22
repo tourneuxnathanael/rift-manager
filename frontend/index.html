@@ -257,6 +257,12 @@ async function runScan() {
       ${renderCheck("Certificat SSL", c.ssl_certificate.passed, c.ssl_certificate.detail)}
       ${renderCheck("Fichiers sensibles", c.exposed_files.passed, c.exposed_files.detail)}
       ${renderCheck("Headers de sécurité", c.security_headers.points === c.security_headers.max_points, c.security_headers.points + "/" + c.security_headers.max_points + " points")}
+      ${renderCheck("SPF / DMARC", c.spf_dmarc.passed, c.spf_dmarc.detail)}
+      ${renderCheck("Cookies", c.cookies.passed, c.cookies.detail)}
+      ${renderCheck("Configuration CORS", c.cors.passed, c.cors.detail)}
+      ${renderCheck("Versions TLS", c.tls_version.passed, c.tls_version.detail)}
+      ${renderCheck("Fuite d'info serveur", c.server_info_disclosure.passed, c.server_info_disclosure.detail)}
+      ${renderCheck("Méthodes HTTP dangereuses", c.dangerous_http_methods.passed, c.dangerous_http_methods.detail)}
 
       ${vulnsHtml}
     `;

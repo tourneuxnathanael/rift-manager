@@ -10,6 +10,7 @@ from pydantic import BaseModel
 import httpx
 import ssl
 import socket
+import dns.resolver
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
@@ -391,6 +392,339 @@ async def check_exposed_files(url: str):
         return {"passed": True, "exposed_paths": [], "detail": f"Scan incomplet ({exc})"}, vulns
 
 
+# ---------- Nouveaux checks avancés ----------
+
+async def check_spf_dmarc(domain: str):
+    """Vérifie la présence d'enregistrements SPF et DMARC (anti-usurpation d'email)."""
+    vulns = []
+    spf_found = False
+    dmarc_found = False
+
+    try:
+        resolver = dns.resolver.Resolver()
+        resolver.timeout = 5
+        resolver.lifetime = 5
+
+        # SPF : enregistrement TXT sur le domaine lui-même
+        try:
+            answers = resolver.resolve(domain, "TXT")
+            for rdata in answers:
+                txt = b"".join(rdata.strings).decode(errors="ignore")
+                if txt.startswith("v=spf1"):
+                    spf_found = True
+        except Exception:
+            pass
+
+        # DMARC : enregistrement TXT sur _dmarc.domain
+        try:
+            answers = resolver.resolve(f"_dmarc.{domain}", "TXT")
+            for rdata in answers:
+                txt = b"".join(rdata.strings).decode(errors="ignore")
+                if txt.startswith("v=DMARC1"):
+                    dmarc_found = True
+        except Exception:
+            pass
+
+    except Exception:
+        pass
+
+    if not spf_found:
+        vulns.append(make_vuln(
+            check_id="spf_missing",
+            title="Enregistrement SPF manquant",
+            severity="medium",
+            risk=(
+                "Sans SPF, n'importe qui peut envoyer des emails en usurpant le nom de domaine "
+                "(ex: phishing envoyé en se faisant passer pour l'entreprise), car rien n'indique "
+                "aux serveurs de messagerie quels serveurs sont autorisés à envoyer en son nom."
+            ),
+            recommendation=(
+                "Ajoute un enregistrement TXT sur le domaine avec une politique SPF, par exemple : "
+                "v=spf1 include:_spf.google.com ~all (à adapter selon le fournisseur d'emails utilisé)."
+            ),
+            evidence="Aucun enregistrement TXT commençant par 'v=spf1' trouvé",
+        ))
+    if not dmarc_found:
+        vulns.append(make_vuln(
+            check_id="dmarc_missing",
+            title="Enregistrement DMARC manquant",
+            severity="medium",
+            risk=(
+                "Sans DMARC, même avec un SPF configuré, il n'y a pas de politique claire indiquant "
+                "aux serveurs de messagerie quoi faire des emails frauduleux détectés (les bloquer, "
+                "les mettre en spam, ou ne rien faire) — ce qui réduit fortement l'efficacité de la "
+                "protection anti-phishing."
+            ),
+            recommendation=(
+                "Ajoute un enregistrement TXT sur _dmarc.tondomaine.com, par exemple : "
+                "v=DMARC1; p=quarantine; rua=mailto:rapports@tondomaine.com"
+            ),
+            evidence=f"Aucun enregistrement TXT trouvé sur _dmarc.{domain}",
+        ))
+
+    return {
+        "spf_found": spf_found,
+        "dmarc_found": dmarc_found,
+        "passed": spf_found and dmarc_found,
+        "detail": "SPF et DMARC configurés"
+        if (spf_found and dmarc_found)
+        else "Protection anti-usurpation d'email incomplète",
+    }, vulns
+
+
+async def check_cookies(url: str):
+    """Vérifie les attributs de sécurité des cookies posés par le site."""
+    vulns = []
+    insecure_cookies = []
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=8) as client:
+            resp = await client.get(url)
+            set_cookie_headers = resp.headers.get_list("set-cookie") if hasattr(resp.headers, "get_list") else []
+            if not set_cookie_headers:
+                # httpx renvoie parfois un seul header combiné, fallback
+                raw = resp.headers.get("set-cookie")
+                set_cookie_headers = [raw] if raw else []
+
+            for cookie_str in set_cookie_headers:
+                lower = cookie_str.lower()
+                name = cookie_str.split("=")[0].strip()
+                missing = []
+                if "secure" not in lower:
+                    missing.append("Secure")
+                if "httponly" not in lower:
+                    missing.append("HttpOnly")
+                if "samesite" not in lower:
+                    missing.append("SameSite")
+                if missing:
+                    insecure_cookies.append({"name": name, "missing": missing})
+
+            for cookie in insecure_cookies:
+                vulns.append(make_vuln(
+                    check_id=f"cookie_{cookie['name']}",
+                    title=f"Cookie '{cookie['name']}' mal sécurisé",
+                    severity="medium",
+                    risk=(
+                        f"Attribut(s) manquant(s) : {', '.join(cookie['missing'])}. Sans Secure, le cookie "
+                        "peut être transmis en clair sur HTTP. Sans HttpOnly, un script JavaScript "
+                        "malveillant (XSS) peut lire le cookie et voler la session. Sans SameSite, le "
+                        "cookie peut être envoyé depuis un site tiers, facilitant des attaques CSRF."
+                    ),
+                    recommendation=(
+                        "Ajoute les attributs manquants lors de la création du cookie, par exemple : "
+                        "Set-Cookie: session=...; Secure; HttpOnly; SameSite=Strict"
+                    ),
+                    evidence=f"Cookie observé sans : {', '.join(cookie['missing'])}",
+                ))
+
+            return {
+                "passed": len(insecure_cookies) == 0,
+                "cookies_checked": len(set_cookie_headers),
+                "detail": "Aucun cookie détecté ou tous correctement sécurisés"
+                if not insecure_cookies
+                else f"{len(insecure_cookies)} cookie(s) avec attributs de sécurité manquants",
+            }, vulns
+    except Exception as exc:
+        return {"passed": True, "cookies_checked": 0, "detail": f"Scan incomplet ({exc})"}, vulns
+
+
+async def check_cors(url: str):
+    """Détecte une configuration CORS trop permissive."""
+    vulns = []
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=8) as client:
+            resp = await client.get(url, headers={"Origin": "https://attacker-test-rift-manager.example"})
+            acao = resp.headers.get("access-control-allow-origin", "")
+            acac = resp.headers.get("access-control-allow-credentials", "")
+
+            wildcard_with_credentials = acao == "*" and acac.lower() == "true"
+            reflects_arbitrary_origin = acao == "https://attacker-test-rift-manager.example"
+
+            if wildcard_with_credentials:
+                vulns.append(make_vuln(
+                    check_id="cors_wildcard_credentials",
+                    title="CORS : wildcard combiné aux credentials",
+                    severity="critical",
+                    risk=(
+                        "Le serveur autorise toutes les origines (*) tout en acceptant les credentials "
+                        "(cookies, authentification). N'importe quel site tiers malveillant peut alors "
+                        "faire des requêtes authentifiées vers cette API au nom d'une victime connectée, "
+                        "et en récupérer la réponse."
+                    ),
+                    recommendation=(
+                        "Ne jamais combiner Access-Control-Allow-Origin: * avec "
+                        "Access-Control-Allow-Credentials: true. Spécifie une liste blanche d'origines "
+                        "autorisées explicitement."
+                    ),
+                    evidence="Access-Control-Allow-Origin: * + Access-Control-Allow-Credentials: true",
+                ))
+            elif reflects_arbitrary_origin:
+                vulns.append(make_vuln(
+                    check_id="cors_reflects_origin",
+                    title="CORS : réflexion arbitraire de l'origine",
+                    severity="high",
+                    risk=(
+                        "Le serveur renvoie systématiquement l'origine de la requête comme autorisée, "
+                        "quelle qu'elle soit. Cela revient en pratique à autoriser n'importe quel site "
+                        "tiers à interagir avec cette API."
+                    ),
+                    recommendation=(
+                        "Valide l'origine contre une liste blanche explicite côté serveur, plutôt que de "
+                        "renvoyer automatiquement l'en-tête Origin reçu dans la requête."
+                    ),
+                    evidence=f"Origin de test renvoyée telle quelle : {acao}",
+                ))
+
+            passed = not (wildcard_with_credentials or reflects_arbitrary_origin)
+            return {
+                "passed": passed,
+                "detail": "Configuration CORS correcte" if passed else "Configuration CORS trop permissive détectée",
+            }, vulns
+    except Exception as exc:
+        return {"passed": True, "detail": f"Scan incomplet ({exc})"}, vulns
+
+
+async def check_tls_version(domain: str):
+    """Vérifie si le serveur accepte encore des versions obsolètes de TLS (1.0/1.1)."""
+    vulns = []
+    obsolete_supported = []
+
+    for version_name, ssl_version in [
+        ("TLSv1.0", getattr(ssl, "TLSVersion", None) and ssl.TLSVersion.TLSv1),
+        ("TLSv1.1", getattr(ssl, "TLSVersion", None) and ssl.TLSVersion.TLSv1_1),
+    ]:
+        if ssl_version is None:
+            continue
+        try:
+            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            ctx.minimum_version = ssl_version
+            ctx.maximum_version = ssl_version
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            with socket.create_connection((domain, 443), timeout=6) as sock:
+                with ctx.wrap_socket(sock, server_hostname=domain):
+                    obsolete_supported.append(version_name)
+        except Exception:
+            continue
+
+    if obsolete_supported:
+        vulns.append(make_vuln(
+            check_id="tls_obsolete",
+            title=f"Versions TLS obsolètes acceptées ({', '.join(obsolete_supported)})",
+            severity="high",
+            risk=(
+                "TLS 1.0 et 1.1 sont obsolètes et présentent des faiblesses cryptographiques connues "
+                "(attaques BEAST, POODLE). Les standards PCI-DSS et la plupart des navigateurs modernes "
+                "ne les considèrent plus comme sûrs."
+            ),
+            recommendation=(
+                "Désactive TLS 1.0 et 1.1 dans la configuration du serveur web, et n'autorise que TLS "
+                "1.2 et 1.3."
+            ),
+            evidence=f"Le serveur a accepté une connexion en : {', '.join(obsolete_supported)}",
+        ))
+
+    return {
+        "passed": len(obsolete_supported) == 0,
+        "obsolete_versions": obsolete_supported,
+        "detail": "Seules des versions TLS modernes sont acceptées"
+        if not obsolete_supported
+        else f"Versions obsolètes encore acceptées : {', '.join(obsolete_supported)}",
+    }, vulns
+
+
+async def check_server_info_disclosure(url: str):
+    """Détecte si le serveur révèle des informations précises sur sa stack technique."""
+    vulns = []
+    disclosed = {}
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=8) as client:
+            resp = await client.get(url)
+            for header in ("server", "x-powered-by"):
+                value = resp.headers.get(header)
+                # On ne considère "révélateur" que si une version précise est indiquée (présence de chiffres)
+                if value and any(char.isdigit() for char in value):
+                    disclosed[header] = value
+
+            for header, value in disclosed.items():
+                vulns.append(make_vuln(
+                    check_id=f"info_disclosure_{header}",
+                    title=f"Version exacte révélée via l'en-tête {header}",
+                    severity="low",
+                    risk=(
+                        f"L'en-tête '{header}' révèle '{value}', donnant à un attaquant la version "
+                        "exacte du logiciel utilisé. Cela facilite la recherche de vulnérabilités "
+                        "connues (CVE) déjà publiées pour cette version précise."
+                    ),
+                    recommendation=(
+                        f"Configure ton serveur pour masquer ou généraliser l'en-tête '{header}' "
+                        "(par exemple via server_tokens off; sur Nginx, ou en supprimant l'en-tête "
+                        "X-Powered-By côté application)."
+                    ),
+                    evidence=f"{header}: {value}",
+                ))
+
+            return {
+                "passed": len(disclosed) == 0,
+                "disclosed_headers": disclosed,
+                "detail": "Aucune version précise exposée"
+                if not disclosed
+                else "Informations de version exposées dans les en-têtes",
+            }, vulns
+    except Exception as exc:
+        return {"passed": True, "disclosed_headers": {}, "detail": f"Scan incomplet ({exc})"}, vulns
+
+
+DANGEROUS_METHODS = ["TRACE", "PUT", "DELETE"]
+
+
+async def check_dangerous_http_methods(url: str):
+    """Vérifie si des méthodes HTTP potentiellement dangereuses sont activées."""
+    vulns = []
+    enabled = []
+    try:
+        async with httpx.AsyncClient(follow_redirects=False, timeout=8) as client:
+            for method in DANGEROUS_METHODS:
+                try:
+                    resp = await client.request(method, url)
+                    # On considère la méthode "activée" si elle n'est pas explicitement refusée
+                    if resp.status_code not in (405, 501, 403, 404):
+                        enabled.append(method)
+                except Exception:
+                    continue
+
+            for method in enabled:
+                severity = "high" if method == "TRACE" else "medium"
+                risk = (
+                    "La méthode TRACE peut être utilisée dans des attaques XST (Cross-Site Tracing) "
+                    "pour contourner la protection HttpOnly des cookies et voler des sessions."
+                    if method == "TRACE"
+                    else f"La méthode {method} activée sans contrôle d'accès strict peut permettre "
+                    "à un attaquant de modifier ou supprimer des ressources sur le serveur."
+                )
+                vulns.append(make_vuln(
+                    check_id=f"http_method_{method.lower()}",
+                    title=f"Méthode HTTP {method} activée",
+                    severity=severity,
+                    risk=risk,
+                    recommendation=(
+                        f"Désactive la méthode {method} au niveau du serveur web si elle n'est pas "
+                        "explicitement nécessaire (configuration Nginx/Apache, ou restriction au niveau "
+                        "du framework applicatif)."
+                    ),
+                    evidence=f"Réponse différente de 403/404/405/501 reçue pour la méthode {method}",
+                ))
+
+            return {
+                "passed": len(enabled) == 0,
+                "enabled_methods": enabled,
+                "detail": "Aucune méthode HTTP risquée activée"
+                if not enabled
+                else f"Méthode(s) activée(s) : {', '.join(enabled)}",
+            }, vulns
+    except Exception as exc:
+        return {"passed": True, "enabled_methods": [], "detail": f"Scan incomplet ({exc})"}, vulns
+
+
 # ---------- Endpoint principal ----------
 
 @app.post("/scan", response_model=ScanResult)
@@ -406,15 +740,28 @@ async def scan(request: ScanRequest):
     headers_check, v2 = await check_security_headers(url)
     ssl_check, v3 = await check_ssl_certificate(domain)
     files_check, v4 = await check_exposed_files(url)
+    spf_dmarc_check, v5 = await check_spf_dmarc(domain)
+    cookies_check, v6 = await check_cookies(url)
+    cors_check, v7 = await check_cors(url)
+    tls_check, v8 = await check_tls_version(domain)
+    server_info_check, v9 = await check_server_info_disclosure(url)
+    methods_check, v10 = await check_dangerous_http_methods(url)
 
-    all_vulns = v1 + v2 + v3 + v4
+    all_vulns = v1 + v2 + v3 + v4 + v5 + v6 + v7 + v8 + v9 + v10
     all_vulns.sort(key=lambda v: SEVERITY_WEIGHT.get(v["severity"], 0), reverse=True)
 
+    # Pondération du score sur 100, répartie entre tous les checks
     score = 0
-    score += 20 if https_redirect["passed"] else 0
-    score += round((headers_check["points"] / headers_check["max_points"]) * 40) if headers_check["max_points"] else 0
-    score += 25 if ssl_check["passed"] else 0
-    score += 15 if files_check["passed"] else 0
+    score += 12 if https_redirect["passed"] else 0
+    score += round((headers_check["points"] / headers_check["max_points"]) * 25) if headers_check["max_points"] else 0
+    score += 15 if ssl_check["passed"] else 0
+    score += 10 if files_check["passed"] else 0
+    score += 8 if spf_dmarc_check["passed"] else 0
+    score += 8 if cookies_check["passed"] else 0
+    score += 8 if cors_check["passed"] else 0
+    score += 8 if tls_check["passed"] else 0
+    score += 3 if server_info_check["passed"] else 0
+    score += 3 if methods_check["passed"] else 0
     score = min(score, 100)
 
     return ScanResult(
@@ -427,6 +774,12 @@ async def scan(request: ScanRequest):
             "security_headers": headers_check,
             "ssl_certificate": ssl_check,
             "exposed_files": files_check,
+            "spf_dmarc": spf_dmarc_check,
+            "cookies": cookies_check,
+            "cors": cors_check,
+            "tls_version": tls_check,
+            "server_info_disclosure": server_info_check,
+            "dangerous_http_methods": methods_check,
         },
         scanned_at=datetime.now(timezone.utc).isoformat(),
     )
