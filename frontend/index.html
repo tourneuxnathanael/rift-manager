@@ -13,6 +13,10 @@
     --yellow: #facc15;
     --orange: #fb923c;
     --red: #f87171;
+    --critical: #ef4444;
+    --high: #f97316;
+    --medium: #eab308;
+    --low: #64748b;
     --text: #e2e8f0;
     --muted: #94a3b8;
   }
@@ -34,7 +38,7 @@
     display: flex;
     gap: 8px;
     width: 100%;
-    max-width: 480px;
+    max-width: 560px;
   }
   input {
     flex: 1;
@@ -59,7 +63,7 @@
   #result {
     margin-top: 40px;
     width: 100%;
-    max-width: 480px;
+    max-width: 560px;
     display: none;
   }
   .score-card {
@@ -67,7 +71,7 @@
     border-radius: 12px;
     padding: 24px;
     text-align: center;
-    margin-bottom: 20px;
+    margin-bottom: 24px;
   }
   .score-number { font-size: 3.5rem; font-weight: 800; }
   .grade { font-size: 1.2rem; color: var(--muted); }
@@ -85,6 +89,70 @@
   .pass { color: var(--green); }
   .fail { color: var(--red); }
   #loading { display: none; color: var(--muted); margin-top: 24px; }
+
+  .section-title {
+    font-size: 1rem;
+    font-weight: 700;
+    margin: 28px 0 14px 0;
+    color: var(--text);
+  }
+
+  .vuln-card {
+    background: var(--card);
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin-bottom: 12px;
+    border-left: 4px solid var(--low);
+  }
+  .vuln-card.critical { border-left-color: var(--critical); }
+  .vuln-card.high { border-left-color: var(--high); }
+  .vuln-card.medium { border-left-color: var(--medium); }
+  .vuln-card.low { border-left-color: var(--low); }
+
+  .vuln-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .vuln-title { font-weight: 600; font-size: 0.95rem; }
+  .badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+    color: #0f172a;
+  }
+  .badge.critical { background: var(--critical); color: white; }
+  .badge.high { background: var(--high); color: white; }
+  .badge.medium { background: var(--medium); }
+  .badge.low { background: var(--low); color: white; }
+
+  .vuln-body { font-size: 0.85rem; color: var(--muted); line-height: 1.5; }
+  .vuln-body strong { color: var(--text); }
+  .vuln-section { margin-top: 8px; }
+  .vuln-evidence {
+    margin-top: 8px;
+    font-family: monospace;
+    font-size: 0.78rem;
+    background: #0f172a;
+    padding: 8px 10px;
+    border-radius: 6px;
+    color: #93c5fd;
+    word-break: break-word;
+  }
+
+  .no-vulns {
+    background: var(--card);
+    border-radius: 10px;
+    padding: 20px;
+    text-align: center;
+    color: var(--green);
+    font-weight: 600;
+  }
 </style>
 </head>
 <body>
@@ -104,6 +172,8 @@
 <script>
 const API_URL = "https://api.rift-manager.pro/scan";
 
+const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
+
 function scoreColor(score) {
   if (score >= 75) return "var(--green)";
   if (score >= 60) return "var(--yellow)";
@@ -119,6 +189,22 @@ function renderCheck(label, passed, detail) {
         <div class="status ${passed ? 'pass' : 'fail'}">${detail}</div>
       </div>
       <div style="font-size:1.3rem;">${passed ? '✅' : '⚠️'}</div>
+    </div>
+  `;
+}
+
+function renderVuln(v) {
+  return `
+    <div class="vuln-card ${v.severity}">
+      <div class="vuln-header">
+        <div class="vuln-title">${v.title}</div>
+        <div class="badge ${v.severity}">${v.severity_label}</div>
+      </div>
+      <div class="vuln-body">
+        <div class="vuln-section"><strong>Risque :</strong> ${v.risk}</div>
+        <div class="vuln-section"><strong>Recommandation :</strong> ${v.recommendation}</div>
+        ${v.evidence ? `<div class="vuln-evidence">${v.evidence}</div>` : ""}
+      </div>
     </div>
   `;
 }
@@ -146,15 +232,33 @@ async function runScan() {
     const data = await resp.json();
 
     const c = data.checks;
+    const vulns = (data.vulnerabilities || []).sort(
+      (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]
+    );
+
+    let vulnsHtml;
+    if (vulns.length === 0) {
+      vulnsHtml = `<div class="no-vulns">✅ Aucune vulnérabilité détectée par ce scan</div>`;
+    } else {
+      vulnsHtml = `
+        <div class="section-title">⚠️ ${vulns.length} vulnérabilité(s) détectée(s)</div>
+        ${vulns.map(renderVuln).join("")}
+      `;
+    }
+
     result.innerHTML = `
       <div class="score-card">
         <div class="score-number" style="color:${scoreColor(data.score)}">${data.score}/100</div>
         <div class="grade">Note ${data.grade} — ${data.target}</div>
       </div>
+
+      <div class="section-title">Résumé des contrôles</div>
       ${renderCheck("Redirection HTTPS", c.https_redirect.passed, c.https_redirect.detail)}
       ${renderCheck("Certificat SSL", c.ssl_certificate.passed, c.ssl_certificate.detail)}
       ${renderCheck("Fichiers sensibles", c.exposed_files.passed, c.exposed_files.detail)}
       ${renderCheck("Headers de sécurité", c.security_headers.points === c.security_headers.max_points, c.security_headers.points + "/" + c.security_headers.max_points + " points")}
+
+      ${vulnsHtml}
     `;
     result.style.display = "block";
   } catch (err) {
