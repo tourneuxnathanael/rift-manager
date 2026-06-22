@@ -94,3 +94,20 @@ function renderNavbar() {
 }
 
 document.addEventListener("DOMContentLoaded", renderNavbar);
+
+// ---------- Footer injecté automatiquement (liens légaux) ----------
+
+function renderFooter() {
+  const footer = document.createElement("footer");
+  footer.innerHTML = `
+    Rift Manager — rift-manager.pro<br>
+    <span style="font-size:0.8rem;">
+      <a href="legal.html">Mentions légales</a> ·
+      <a href="terms.html">CGU</a> ·
+      <a href="privacy.html">Confidentialité</a>
+    </span>
+  `;
+  document.body.appendChild(footer);
+}
+
+document.addEventListener("DOMContentLoaded", renderFooter);
