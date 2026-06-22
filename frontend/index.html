@@ -160,6 +160,8 @@
     align-items: center;
     text-align: center;
   }
+
+  .app-hidden { display: none; }
 </style>
 </head>
 <body>
@@ -174,7 +176,7 @@
   <p id="gateError" style="color:var(--red); display:none; margin-top:14px;">Code incorrect</p>
 </div>
 
-<div id="app" style="display:none; width:100%; display:flex; flex-direction:column; align-items:center;">
+<div id="app" class="app-hidden" style="width:100%; flex-direction:column; align-items:center;">
   <h1>🔒 Rift Manager</h1>
   <p class="subtitle">Audit de sécurité gratuit pour ton site en 10 secondes</p>
 
@@ -218,6 +220,7 @@ async function checkAccess() {
 
     sessionStorage.setItem("rift_access_code", code);
     document.getElementById("gate").style.display = "none";
+    document.getElementById("app").classList.remove("app-hidden");
     document.getElementById("app").style.display = "flex";
   } catch (err) {
     errorMsg.style.display = "block";
@@ -242,6 +245,7 @@ document.getElementById("accessCodeInput").addEventListener("keydown", (e) => {
     });
     if (resp.ok) {
       document.getElementById("gate").style.display = "none";
+      document.getElementById("app").classList.remove("app-hidden");
       document.getElementById("app").style.display = "flex";
     }
   } catch (err) {
