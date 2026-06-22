@@ -39,12 +39,21 @@ function scoreColor(score) {
   return "var(--red)";
 }
 
+function escapeHtml(str) {
+  if (str === null || str === undefined) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 function renderCheck(label, passed, detail) {
   return `
     <div class="check">
       <div>
-        <div class="label">${label}</div>
-        <div class="status ${passed ? 'pass' : 'fail'}">${detail}</div>
+        <div class="label">${escapeHtml(label)}</div>
+        <div class="status ${passed ? 'pass' : 'fail'}">${escapeHtml(detail)}</div>
       </div>
       <div style="font-size:1.3rem;">${passed ? '✅' : '⚠️'}</div>
     </div>
@@ -55,13 +64,13 @@ function renderVuln(v) {
   return `
     <div class="vuln-card ${v.severity}">
       <div class="vuln-header">
-        <div class="vuln-title">${v.title}</div>
-        <div class="badge ${v.severity}">${v.severity_label}</div>
+        <div class="vuln-title">${escapeHtml(v.title)}</div>
+        <div class="badge ${v.severity}">${escapeHtml(v.severity_label)}</div>
       </div>
       <div class="vuln-body">
-        <div class="vuln-section"><strong>Risque :</strong> ${v.risk}</div>
-        <div class="vuln-section"><strong>Recommandation :</strong> ${v.recommendation}</div>
-        ${v.evidence ? `<div class="vuln-evidence">${v.evidence}</div>` : ""}
+        <div class="vuln-section"><strong>Risque :</strong> ${escapeHtml(v.risk)}</div>
+        <div class="vuln-section"><strong>Recommandation :</strong> ${escapeHtml(v.recommendation)}</div>
+        ${v.evidence ? `<div class="vuln-evidence">${escapeHtml(v.evidence)}</div>` : ""}
       </div>
     </div>
   `;
