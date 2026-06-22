@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Historique — Rift Manager</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="navbar-placeholder"></div>
+
+<div class="page" style="max-width:680px;">
+  <h1>Historique des scans</h1>
+  <p class="subtitle">Les 50 derniers scans effectués avec ce compte.</p>
+
+  <div id="historyList"></div>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+requireAuth();
+
+function scoreColor(score) {
+  if (score >= 75) return "var(--green)";
+  if (score >= 60) return "var(--yellow)";
+  if (score >= 40) return "var(--orange)";
+  return "var(--red)";
+}
+
+function formatDate(isoString) {
+  const d = new Date(isoString);
+  return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" }) +
+    " à " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+}
+
+async function loadHistory() {
+  const container = document.getElementById("historyList");
+  try {
+    const resp = await apiFetch("/scans/history");
+    if (!resp.ok) throw new Error("Impossible de charger l'historique");
+    const scans = await resp.json();
+
+    if (scans.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          Aucun scan pour le moment.<br>
+          <a href="dashboard.html">Lance ton premier scan →</a>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = scans.map(s => `
+      <div class="history-row">
+        <div>
+          <div class="target">${s.target}</div>
+          <div class="date">${formatDate(s.created_at)}</div>
+        </div>
+        <div class="history-score" style="color:${scoreColor(s.score)};">
+          ${s.score}/100 — ${s.grade}
+        </div>
+      </div>
+    `).join("");
+  } catch (err) {
+    container.innerHTML = `<p style="color:var(--red)">Erreur : ${err.message}</p>`;
+  }
+}
+
+loadHistory();
+</script>
+
+</body>
+</html>

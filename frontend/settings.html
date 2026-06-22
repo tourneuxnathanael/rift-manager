@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Paramètres — Rift Manager</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="navbar-placeholder"></div>
+
+<div class="page" style="max-width:560px;">
+  <h1>Paramètres</h1>
+
+  <div class="card">
+    <h2>Session</h2>
+    <p style="color:var(--muted);">Déconnecte-toi de cet appareil.</p>
+    <button class="btn-secondary" onclick="logout()">Se déconnecter</button>
+  </div>
+
+  <div class="card" style="border-color: var(--red);">
+    <h2 style="color:var(--red);">Zone de danger</h2>
+    <p style="color:var(--muted);">
+      Cette action supprime définitivement ton compte et tout ton historique de scans.
+      Cette action est irréversible.
+    </p>
+    <button class="btn-danger" onclick="confirmDelete()">Supprimer mon compte</button>
+    <div class="form-error" id="deleteError"></div>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+requireAuth();
+
+async function confirmDelete() {
+  const sure = confirm("Es-tu sûr de vouloir supprimer définitivement ton compte ? Cette action est irréversible.");
+  if (!sure) return;
+
+  const errorBox = document.getElementById("deleteError");
+  errorBox.style.display = "none";
+
+  try {
+    const resp = await apiFetch("/auth/me", { method: "DELETE" });
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      throw new Error(data.detail || "Erreur lors de la suppression");
+    }
+    clearToken();
+    window.location.href = "index.html";
+  } catch (err) {
+    errorBox.textContent = err.message;
+    errorBox.style.display = "block";
+  }
+}
+</script>
+
+</body>
+</html>

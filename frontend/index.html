@@ -3,369 +3,41 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Rift Manager — Audit de sécurité gratuit</title>
-<style>
-  :root {
-    --bg: #0f172a;
-    --card: #1e293b;
-    --accent: #38bdf8;
-    --green: #4ade80;
-    --yellow: #facc15;
-    --orange: #fb923c;
-    --red: #f87171;
-    --critical: #ef4444;
-    --high: #f97316;
-    --medium: #eab308;
-    --low: #64748b;
-    --text: #e2e8f0;
-    --muted: #94a3b8;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 40px 20px;
-  }
-  h1 { font-size: 1.8rem; margin-bottom: 4px; }
-  p.subtitle { color: var(--muted); margin-top: 0; margin-bottom: 32px; text-align: center; }
-  .scan-box {
-    display: flex;
-    gap: 8px;
-    width: 100%;
-    max-width: 560px;
-  }
-  input {
-    flex: 1;
-    padding: 12px 16px;
-    border-radius: 8px;
-    border: 1px solid #334155;
-    background: var(--card);
-    color: var(--text);
-    font-size: 1rem;
-  }
-  button {
-    padding: 12px 20px;
-    border-radius: 8px;
-    border: none;
-    background: var(--accent);
-    color: #0f172a;
-    font-weight: 600;
-    cursor: pointer;
-    font-size: 1rem;
-  }
-  button:disabled { opacity: 0.6; cursor: not-allowed; }
-  #result {
-    margin-top: 40px;
-    width: 100%;
-    max-width: 560px;
-    display: none;
-  }
-  .score-card {
-    background: var(--card);
-    border-radius: 12px;
-    padding: 24px;
-    text-align: center;
-    margin-bottom: 24px;
-  }
-  .score-number { font-size: 3.5rem; font-weight: 800; }
-  .grade { font-size: 1.2rem; color: var(--muted); }
-  .check {
-    background: var(--card);
-    border-radius: 10px;
-    padding: 14px 18px;
-    margin-bottom: 10px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  .check .label { font-weight: 500; }
-  .check .status { font-size: 0.85rem; }
-  .pass { color: var(--green); }
-  .fail { color: var(--red); }
-  #loading { display: none; color: var(--muted); margin-top: 24px; }
-
-  .section-title {
-    font-size: 1rem;
-    font-weight: 700;
-    margin: 28px 0 14px 0;
-    color: var(--text);
-  }
-
-  .vuln-card {
-    background: var(--card);
-    border-radius: 10px;
-    padding: 16px 18px;
-    margin-bottom: 12px;
-    border-left: 4px solid var(--low);
-  }
-  .vuln-card.critical { border-left-color: var(--critical); }
-  .vuln-card.high { border-left-color: var(--high); }
-  .vuln-card.medium { border-left-color: var(--medium); }
-  .vuln-card.low { border-left-color: var(--low); }
-
-  .vuln-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 8px;
-  }
-  .vuln-title { font-weight: 600; font-size: 0.95rem; }
-  .badge {
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    padding: 3px 8px;
-    border-radius: 999px;
-    white-space: nowrap;
-    color: #0f172a;
-  }
-  .badge.critical { background: var(--critical); color: white; }
-  .badge.high { background: var(--high); color: white; }
-  .badge.medium { background: var(--medium); }
-  .badge.low { background: var(--low); color: white; }
-
-  .vuln-body { font-size: 0.85rem; color: var(--muted); line-height: 1.5; }
-  .vuln-body strong { color: var(--text); }
-  .vuln-section { margin-top: 8px; }
-  .vuln-evidence {
-    margin-top: 8px;
-    font-family: monospace;
-    font-size: 0.78rem;
-    background: #0f172a;
-    padding: 8px 10px;
-    border-radius: 6px;
-    color: #93c5fd;
-    word-break: break-word;
-  }
-
-  .no-vulns {
-    background: var(--card);
-    border-radius: 10px;
-    padding: 20px;
-    text-align: center;
-    color: var(--green);
-    font-weight: 600;
-  }
-
-  .gate {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-  }
-
-  .app-hidden { display: none; }
-</style>
+<title>Rift Manager — Audit de sécurité pour ton site</title>
+<link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
-<div id="gate" class="gate">
+<div id="navbar-placeholder"></div>
+
+<div class="hero">
   <h1>🔒 Rift Manager</h1>
-  <p class="subtitle">Accès privé — entre ton code pour continuer</p>
-  <div class="scan-box" style="max-width:320px;">
-    <input type="password" id="accessCodeInput" placeholder="Code d'accès" />
-    <button id="unlockBtn" onclick="checkAccess()">Entrer</button>
-  </div>
-  <p id="gateError" style="color:var(--red); display:none; margin-top:14px;">Code incorrect</p>
+  <p class="subtitle">Scanne la sécurité de ton site ou ton SaaS en quelques secondes</p>
+  <a href="signup.html" class="btn" style="font-size:1.1rem; padding:14px 28px;">Créer un compte gratuit</a>
 </div>
 
-<div id="app" class="app-hidden" style="width:100%; flex-direction:column; align-items:center;">
-  <h1>🔒 Rift Manager</h1>
-  <p class="subtitle">Audit de sécurité gratuit pour ton site en 10 secondes</p>
-
-  <div class="scan-box">
-    <input type="text" id="urlInput" placeholder="exemple.com" />
-    <button id="scanBtn" onclick="runScan()">Scanner</button>
+<div class="page">
+  <div class="card">
+    <h2>Ce que Rift Manager vérifie</h2>
+    <p style="color:var(--muted);">
+      10 contrôles de sécurité automatisés : redirection HTTPS, certificat SSL, headers de sécurité
+      (HSTS, CSP, X-Frame-Options...), fichiers sensibles exposés, SPF/DMARC, cookies, configuration
+      CORS, versions TLS obsolètes, fuite d'information serveur, méthodes HTTP dangereuses.
+    </p>
   </div>
 
-  <div id="loading">Scan en cours...</div>
-
-  <div id="result"></div>
+  <div class="card">
+    <h2>Pourquoi créer un compte ?</h2>
+    <p style="color:var(--muted);">
+      Garde l'historique de tous tes scans, suis l'évolution de ton score dans le temps, et reviens
+      facilement sur le détail de chaque vulnérabilité détectée.
+    </p>
+    <a href="signup.html" class="btn" style="margin-top:8px;">Commencer gratuitement</a>
+  </div>
 </div>
 
-<script>
-const API_BASE = "https://api.rift-manager.pro";
-const API_URL = API_BASE + "/scan";
-const VERIFY_URL = API_BASE + "/verify-access";
+<footer>Rift Manager — rift-manager.pro</footer>
 
-// ---------- Écran de connexion ----------
-
-function getStoredCode() {
-  return sessionStorage.getItem("rift_access_code") || "";
-}
-
-async function checkAccess() {
-  const code = document.getElementById("accessCodeInput").value.trim();
-  const btn = document.getElementById("unlockBtn");
-  const errorMsg = document.getElementById("gateError");
-
-  btn.disabled = true;
-  errorMsg.style.display = "none";
-
-  try {
-    const resp = await fetch(VERIFY_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code })
-    });
-
-    if (!resp.ok) throw new Error("invalid");
-
-    sessionStorage.setItem("rift_access_code", code);
-    document.getElementById("gate").style.display = "none";
-    document.getElementById("app").classList.remove("app-hidden");
-    document.getElementById("app").style.display = "flex";
-  } catch (err) {
-    errorMsg.style.display = "block";
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-document.getElementById("accessCodeInput").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") checkAccess();
-});
-
-// Si un code valide est déjà en mémoire pour cette session, on tente de passer directement
-(async function tryAutoUnlock() {
-  const stored = getStoredCode();
-  if (!stored) return;
-  try {
-    const resp = await fetch(VERIFY_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: stored })
-    });
-    if (resp.ok) {
-      document.getElementById("gate").style.display = "none";
-      document.getElementById("app").classList.remove("app-hidden");
-      document.getElementById("app").style.display = "flex";
-    }
-  } catch (err) {
-    // on reste sur l'écran de connexion en cas d'erreur
-  }
-})();
-
-// ---------- Outil de scan ----------
-
-const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
-
-function scoreColor(score) {
-  if (score >= 75) return "var(--green)";
-  if (score >= 60) return "var(--yellow)";
-  if (score >= 40) return "var(--orange)";
-  return "var(--red)";
-}
-
-function renderCheck(label, passed, detail) {
-  return `
-    <div class="check">
-      <div>
-        <div class="label">${label}</div>
-        <div class="status ${passed ? 'pass' : 'fail'}">${detail}</div>
-      </div>
-      <div style="font-size:1.3rem;">${passed ? '✅' : '⚠️'}</div>
-    </div>
-  `;
-}
-
-function renderVuln(v) {
-  return `
-    <div class="vuln-card ${v.severity}">
-      <div class="vuln-header">
-        <div class="vuln-title">${v.title}</div>
-        <div class="badge ${v.severity}">${v.severity_label}</div>
-      </div>
-      <div class="vuln-body">
-        <div class="vuln-section"><strong>Risque :</strong> ${v.risk}</div>
-        <div class="vuln-section"><strong>Recommandation :</strong> ${v.recommendation}</div>
-        ${v.evidence ? `<div class="vuln-evidence">${v.evidence}</div>` : ""}
-      </div>
-    </div>
-  `;
-}
-
-async function runScan() {
-  const url = document.getElementById("urlInput").value.trim();
-  if (!url) return;
-
-  const btn = document.getElementById("scanBtn");
-  const loading = document.getElementById("loading");
-  const result = document.getElementById("result");
-
-  btn.disabled = true;
-  loading.style.display = "block";
-  result.style.display = "none";
-
-  try {
-    const resp = await fetch(API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Access-Code": getStoredCode()
-      },
-      body: JSON.stringify({ url })
-    });
-
-    if (!resp.ok) throw new Error("Scan échoué");
-    const data = await resp.json();
-
-    const c = data.checks;
-    const vulns = (data.vulnerabilities || []).sort(
-      (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]
-    );
-
-    let vulnsHtml;
-    if (vulns.length === 0) {
-      vulnsHtml = `<div class="no-vulns">✅ Aucune vulnérabilité détectée par ce scan</div>`;
-    } else {
-      vulnsHtml = `
-        <div class="section-title">⚠️ ${vulns.length} vulnérabilité(s) détectée(s)</div>
-        ${vulns.map(renderVuln).join("")}
-      `;
-    }
-
-    result.innerHTML = `
-      <div class="score-card">
-        <div class="score-number" style="color:${scoreColor(data.score)}">${data.score}/100</div>
-        <div class="grade">Note ${data.grade} — ${data.target}</div>
-      </div>
-
-      <div class="section-title">Résumé des contrôles</div>
-      ${renderCheck("Redirection HTTPS", c.https_redirect.passed, c.https_redirect.detail)}
-      ${renderCheck("Certificat SSL", c.ssl_certificate.passed, c.ssl_certificate.detail)}
-      ${renderCheck("Fichiers sensibles", c.exposed_files.passed, c.exposed_files.detail)}
-      ${renderCheck("Headers de sécurité", c.security_headers.points === c.security_headers.max_points, c.security_headers.points + "/" + c.security_headers.max_points + " points")}
-      ${renderCheck("SPF / DMARC", c.spf_dmarc.passed, c.spf_dmarc.detail)}
-      ${renderCheck("Cookies", c.cookies.passed, c.cookies.detail)}
-      ${renderCheck("Configuration CORS", c.cors.passed, c.cors.detail)}
-      ${renderCheck("Versions TLS", c.tls_version.passed, c.tls_version.detail)}
-      ${renderCheck("Fuite d'info serveur", c.server_info_disclosure.passed, c.server_info_disclosure.detail)}
-      ${renderCheck("Méthodes HTTP dangereuses", c.dangerous_http_methods.passed, c.dangerous_http_methods.detail)}
-
-      ${vulnsHtml}
-    `;
-    result.style.display = "block";
-  } catch (err) {
-    result.innerHTML = `<p style="color:var(--red)">Erreur : ${err.message}</p>`;
-    result.style.display = "block";
-  } finally {
-    btn.disabled = false;
-    loading.style.display = "none";
-  }
-}
-
-document.getElementById("urlInput").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") runScan();
-});
-</script>
-
+<script src="js/app.js"></script>
 </body>
 </html>
