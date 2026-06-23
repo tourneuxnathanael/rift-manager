@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Scanner — Rift Manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -11,6 +14,7 @@
 <div id="navbar-placeholder"></div>
 
 <div class="page" style="max-width:680px;">
+  <p class="eyebrow">NOUVEAU RELEVÉ</p>
   <h1>Lancer un audit de sécurité</h1>
   <p class="subtitle">Entre une URL pour scanner les 10 contrôles de sécurité.</p>
 
@@ -26,57 +30,9 @@
   <div id="result"></div>
 </div>
 
-
-
 <script src="js/app.js"></script>
 <script>
 requireAuth();
-
-const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
-
-function scoreColor(score) {
-  if (score >= 75) return "var(--green)";
-  if (score >= 60) return "var(--yellow)";
-  if (score >= 40) return "var(--orange)";
-  return "var(--red)";
-}
-
-function escapeHtml(str) {
-  if (str === null || str === undefined) return "";
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function renderCheck(label, passed, detail) {
-  return `
-    <div class="check">
-      <div>
-        <div class="label">${escapeHtml(label)}</div>
-        <div class="status ${passed ? 'pass' : 'fail'}">${escapeHtml(detail)}</div>
-      </div>
-      <div style="font-size:1.3rem;">${passed ? '✅' : '⚠️'}</div>
-    </div>
-  `;
-}
-
-function renderVuln(v) {
-  return `
-    <div class="vuln-card ${v.severity}">
-      <div class="vuln-header">
-        <div class="vuln-title">${escapeHtml(v.title)}</div>
-        <div class="badge ${v.severity}">${escapeHtml(v.severity_label)}</div>
-      </div>
-      <div class="vuln-body">
-        <div class="vuln-section"><strong>Risque :</strong> ${escapeHtml(v.risk)}</div>
-        <div class="vuln-section"><strong>Recommandation :</strong> ${escapeHtml(v.recommendation)}</div>
-        ${v.evidence ? `<div class="vuln-evidence">${escapeHtml(v.evidence)}</div>` : ""}
-      </div>
-    </div>
-  `;
-}
 
 async function loadUsage() {
   const banner = document.getElementById("usageBanner");
@@ -93,11 +49,11 @@ async function loadUsage() {
 
     banner.innerHTML = `
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-        <div>
-          <strong>${planLabel}</strong>
-          <span style="color:var(--muted); margin-left:10px;">${scansText} · ${domainsText}</span>
+        <div style="font-family:var(--font-mono); font-size:0.82rem; text-transform:uppercase; letter-spacing:0.04em;">
+          <strong>${escapeHtml(planLabel)}</strong>
+          <span style="color:var(--muted); margin-left:10px; text-transform:none; letter-spacing:0;">${escapeHtml(scansText)} · ${escapeHtml(domainsText)}</span>
         </div>
-        ${u.plan === "free" ? `<a href="pricing.html" class="btn" style="padding:8px 14px; font-size:0.85rem;">Passer au plan Pro</a>` : ""}
+        ${u.plan === "free" ? `<a href="pricing.html" class="btn" style="padding:8px 14px; font-size:0.72rem;">Passer au plan Pro</a>` : ""}
       </div>
     `;
   } catch (err) {
@@ -131,45 +87,11 @@ async function runScan() {
     }
     const data = await resp.json();
 
-    const c = data.checks;
-    const vulns = (data.vulnerabilities || []).sort(
-      (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]
-    );
-
-    let vulnsHtml;
-    if (vulns.length === 0) {
-      vulnsHtml = `<div class="no-vulns">✅ Aucune vulnérabilité détectée par ce scan</div>`;
-    } else {
-      vulnsHtml = `
-        <div class="section-title">⚠️ ${vulns.length} vulnérabilité(s) détectée(s)</div>
-        ${vulns.map(renderVuln).join("")}
-      `;
-    }
-
-    result.innerHTML = `
-      <div class="score-card">
-        <div class="score-number" style="color:${scoreColor(data.score)}">${data.score}/100</div>
-        <div class="grade">Note ${data.grade} — ${data.target}</div>
-      </div>
-
-      <div class="section-title">Résumé des contrôles</div>
-      ${renderCheck("Redirection HTTPS", c.https_redirect.passed, c.https_redirect.detail)}
-      ${renderCheck("Certificat SSL", c.ssl_certificate.passed, c.ssl_certificate.detail)}
-      ${renderCheck("Fichiers sensibles", c.exposed_files.passed, c.exposed_files.detail)}
-      ${renderCheck("Headers de sécurité", c.security_headers.points === c.security_headers.max_points, c.security_headers.points + "/" + c.security_headers.max_points + " points")}
-      ${renderCheck("SPF / DMARC", c.spf_dmarc.passed, c.spf_dmarc.detail)}
-      ${renderCheck("Cookies", c.cookies.passed, c.cookies.detail)}
-      ${renderCheck("Configuration CORS", c.cors.passed, c.cors.detail)}
-      ${renderCheck("Versions TLS", c.tls_version.passed, c.tls_version.detail)}
-      ${renderCheck("Fuite d'info serveur", c.server_info_disclosure.passed, c.server_info_disclosure.detail)}
-      ${renderCheck("Méthodes HTTP dangereuses", c.dangerous_http_methods.passed, c.dangerous_http_methods.detail)}
-
-      ${vulnsHtml}
-    `;
+    result.innerHTML = renderScanResult(data);
     result.style.display = "block";
     loadUsage();
   } catch (err) {
-    result.innerHTML = `<p style="color:var(--red)">Erreur : ${err.message}</p>`;
+    result.innerHTML = `<p style="color:var(--fault); font-family:var(--font-mono); font-size:0.85rem;">${escapeHtml(err.message)}</p>`;
     result.style.display = "block";
   } finally {
     btn.disabled = false;

@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Rift Manager — Audit de sécurité pour ton site</title>
+<title>Rift Manager — Relevé d'intégrité pour ton site</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -11,33 +14,142 @@
 <div id="navbar-placeholder"></div>
 
 <div class="hero">
-  <h1>🔒 Rift Manager</h1>
-  <p class="subtitle">Scanne la sécurité de ton site ou ton SaaS en quelques secondes</p>
-  <a href="signup.html" class="btn" style="font-size:1.1rem; padding:14px 28px;">Créer un compte gratuit</a>
+  <svg class="fault-line" viewBox="0 0 1000 400" preserveAspectRatio="none">
+    <path d="M-20,340 L120,300 L180,360 L260,180 L330,260 L420,40 L520,140 L610,90 L700,220 L800,160 L1020,260" />
+  </svg>
+
+  <div class="hero-grid">
+    <div>
+      <p class="eyebrow">RIFT_MANAGER // RELEVÉ D'INTÉGRITÉ</p>
+      <h1>Avant qu'une fissure ne devienne une <span class="accent">brèche</span>.</h1>
+      <p class="subtitle">
+        Rift Manager ausculte ton site comme un inspecteur structurel : redirection HTTPS,
+        certificat, headers, exposition de fichiers, email, sessions — en quelques secondes,
+        sans jamais y toucher.
+      </p>
+      <div class="cta-row">
+        <a href="signup.html" class="btn">Lancer un relevé gratuit</a>
+        <a href="pricing.html" class="btn btn-secondary">Voir les tarifs</a>
+      </div>
+    </div>
+
+    <div>
+      <div class="terminal" id="bootTerminal"></div>
+      <div id="demoGauge" style="margin-top:18px;"></div>
+    </div>
+  </div>
 </div>
 
 <div class="page">
-  <div class="card">
-    <h2>Ce que Rift Manager vérifie</h2>
-    <p style="color:var(--muted);">
-      10 contrôles de sécurité automatisés : redirection HTTPS, certificat SSL, headers de sécurité
-      (HSTS, CSP, X-Frame-Options...), fichiers sensibles exposés, SPF/DMARC, cookies, configuration
-      CORS, versions TLS obsolètes, fuite d'information serveur, méthodes HTTP dangereuses.
-    </p>
+  <p class="eyebrow">DOMAINES AUSCULTÉS</p>
+  <h2 style="font-size:1.4rem;">10 contrôles, classés par nature de risque</h2>
+
+  <div class="check-grid">
+    <div class="check-grid-item">
+      <span class="tag">Transport</span>
+      <div class="name">Redirection HTTPS</div>
+    </div>
+    <div class="check-grid-item">
+      <span class="tag">Transport</span>
+      <div class="name">Certificat SSL</div>
+    </div>
+    <div class="check-grid-item">
+      <span class="tag">Transport</span>
+      <div class="name">Versions TLS obsolètes</div>
+    </div>
+    <div class="check-grid-item">
+      <span class="tag">En-têtes</span>
+      <div class="name">Headers de sécurité (HSTS, CSP...)</div>
+    </div>
+    <div class="check-grid-item">
+      <span class="tag">En-têtes</span>
+      <div class="name">Configuration CORS</div>
+    </div>
+    <div class="check-grid-item">
+      <span class="tag">En-têtes</span>
+      <div class="name">Fuite d'info serveur</div>
+    </div>
+    <div class="check-grid-item">
+      <span class="tag">Exposition</span>
+      <div class="name">Fichiers sensibles publics</div>
+    </div>
+    <div class="check-grid-item">
+      <span class="tag">Exposition</span>
+      <div class="name">Méthodes HTTP dangereuses</div>
+    </div>
+    <div class="check-grid-item">
+      <span class="tag">Identité</span>
+      <div class="name">SPF / DMARC</div>
+    </div>
+    <div class="check-grid-item">
+      <span class="tag">Identité</span>
+      <div class="name">Attributs des cookies</div>
+    </div>
   </div>
 
-  <div class="card">
+  <div class="card" style="margin-top:40px;">
+    <p class="eyebrow" style="margin-bottom:8px;">COMPTE GRATUIT</p>
     <h2>Pourquoi créer un compte ?</h2>
     <p style="color:var(--muted);">
-      Garde l'historique de tous tes scans, suis l'évolution de ton score dans le temps, et reviens
-      facilement sur le détail de chaque vulnérabilité détectée.
+      Garde l'historique de tes relevés, suis l'évolution de ton score dans le temps, et reviens
+      sur le détail de chaque anomalie détectée.
     </p>
     <a href="signup.html" class="btn" style="margin-top:8px;">Commencer gratuitement</a>
   </div>
 </div>
 
-
-
 <script src="js/app.js"></script>
+<script>
+// ---------- Séquence de démonstration (terminal + cadran) ----------
+
+const DEMO_LINES = [
+  { text: "rift scan example.com", type: "cmd" },
+  { text: "→ redirection https ......... ", result: "PASS" },
+  { text: "→ certificat ssl ............ ", result: "PASS" },
+  { text: "→ hsts ....................... ", result: "FAIL" },
+  { text: "→ content-security-policy .... ", result: "FAIL" },
+  { text: "→ fichiers sensibles ......... ", result: "PASS" },
+  { text: "→ spf / dmarc ................ ", result: "PASS" },
+  { text: "→ cookies .................... ", result: "PASS" },
+  { text: "→ tls obsolète ............... ", result: "PASS" },
+  { text: "rapport prêt — score 78/100", type: "cmd" },
+];
+
+function runBootSequence() {
+  const term = document.getElementById("bootTerminal");
+  const gaugeBox = document.getElementById("demoGauge");
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  if (reduced) {
+    term.innerHTML = DEMO_LINES.map(renderLine).join("");
+    gaugeBox.innerHTML = buildScoreCard("example.com", 78, "B", null);
+    return;
+  }
+
+  let i = 0;
+  term.innerHTML = "";
+  const interval = setInterval(() => {
+    if (i >= DEMO_LINES.length) {
+      clearInterval(interval);
+      gaugeBox.innerHTML = buildScoreCard("example.com", 78, "B", null);
+      return;
+    }
+    term.innerHTML += renderLine(DEMO_LINES[i]);
+    term.scrollTop = term.scrollHeight;
+    i++;
+  }, 320);
+}
+
+function renderLine(line) {
+  if (line.type === "cmd") {
+    return `<div class="t-line" style="color:var(--text); font-weight:700; margin-top:6px;">${escapeHtml(line.text)}</div>`;
+  }
+  const cls = line.result === "PASS" ? "ok" : "ko";
+  return `<div class="t-line">${escapeHtml(line.text)}<span class="${cls}">${line.result}</span></div>`;
+}
+
+runBootSequence();
+</script>
+
 </body>
 </html>

@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Détail du scan — Rift Manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -11,66 +14,14 @@
 <div id="navbar-placeholder"></div>
 
 <div class="page" style="max-width:680px;">
-  <p><a href="history.html">← Retour à l'historique</a></p>
-  <div id="loading" style="display:block;">Chargement du scan...</div>
+  <p style="font-family:var(--font-mono); font-size:0.78rem;"><a href="history.html">← Retour à l'historique</a></p>
+  <div id="loading" style="display:block;">Chargement du relevé...</div>
   <div id="result"></div>
 </div>
 
 <script src="js/app.js"></script>
 <script>
 requireAuth();
-
-const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
-
-function escapeHtml(str) {
-  if (str === null || str === undefined) return "";
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function scoreColor(score) {
-  if (score >= 75) return "var(--green)";
-  if (score >= 60) return "var(--yellow)";
-  if (score >= 40) return "var(--orange)";
-  return "var(--red)";
-}
-
-function formatDate(isoString) {
-  const d = new Date(isoString);
-  return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" }) +
-    " à " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-}
-
-function renderCheck(label, passed, detail) {
-  return `
-    <div class="check">
-      <div>
-        <div class="label">${escapeHtml(label)}</div>
-        <div class="status ${passed ? 'pass' : 'fail'}">${escapeHtml(detail)}</div>
-      </div>
-      <div style="font-size:1.3rem;">${passed ? '✅' : '⚠️'}</div>
-    </div>
-  `;
-}
-
-function renderVuln(v) {
-  return `
-    <div class="vuln-card ${v.severity}">
-      <div class="vuln-header">
-        <div class="vuln-title">${escapeHtml(v.title)}</div>
-        <div class="badge ${v.severity}">${escapeHtml(v.severity_label)}</div>
-      </div>
-      <div class="vuln-body">
-        <div class="vuln-section"><strong>Risque :</strong> ${escapeHtml(v.risk)}</div>
-        <div class="vuln-section"><strong>Recommandation :</strong> ${escapeHtml(v.recommendation)}</div>
-        ${v.evidence ? `<div class="vuln-evidence">${escapeHtml(v.evidence)}</div>` : ""}
-      </div>
-    </div>
-  `;
-}
 
 async function loadScanDetail() {
   const params = new URLSearchParams(window.location.search);
@@ -80,7 +31,7 @@ async function loadScanDetail() {
 
   if (!scanId) {
     loading.style.display = "none";
-    result.innerHTML = `<p style="color:var(--red)">Aucun scan spécifié.</p>`;
+    result.innerHTML = `<p style="color:var(--fault); font-family:var(--font-mono);">Aucun scan spécifié.</p>`;
     return;
   }
 
@@ -91,44 +42,9 @@ async function loadScanDetail() {
       throw new Error(errData.detail || "Impossible de charger ce scan");
     }
     const data = await resp.json();
-    const c = data.checks;
-    const vulns = (data.vulnerabilities || []).sort(
-      (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]
-    );
-
-    let vulnsHtml;
-    if (vulns.length === 0) {
-      vulnsHtml = `<div class="no-vulns">✅ Aucune vulnérabilité détectée par ce scan</div>`;
-    } else {
-      vulnsHtml = `
-        <div class="section-title">⚠️ ${vulns.length} vulnérabilité(s) détectée(s)</div>
-        ${vulns.map(renderVuln).join("")}
-      `;
-    }
-
-    result.innerHTML = `
-      <div class="score-card">
-        <div class="score-number" style="color:${scoreColor(data.score)}">${data.score}/100</div>
-        <div class="grade">Note ${data.grade} — ${escapeHtml(data.target)}</div>
-        <div style="color:var(--muted); font-size:0.85rem; margin-top:6px;">Scanné le ${formatDate(data.scanned_at)}</div>
-      </div>
-
-      <div class="section-title">Résumé des contrôles</div>
-      ${renderCheck("Redirection HTTPS", c.https_redirect.passed, c.https_redirect.detail)}
-      ${renderCheck("Certificat SSL", c.ssl_certificate.passed, c.ssl_certificate.detail)}
-      ${renderCheck("Fichiers sensibles", c.exposed_files.passed, c.exposed_files.detail)}
-      ${renderCheck("Headers de sécurité", c.security_headers.points === c.security_headers.max_points, c.security_headers.points + "/" + c.security_headers.max_points + " points")}
-      ${renderCheck("SPF / DMARC", c.spf_dmarc.passed, c.spf_dmarc.detail)}
-      ${renderCheck("Cookies", c.cookies.passed, c.cookies.detail)}
-      ${renderCheck("Configuration CORS", c.cors.passed, c.cors.detail)}
-      ${renderCheck("Versions TLS", c.tls_version.passed, c.tls_version.detail)}
-      ${renderCheck("Fuite d'info serveur", c.server_info_disclosure.passed, c.server_info_disclosure.detail)}
-      ${renderCheck("Méthodes HTTP dangereuses", c.dangerous_http_methods.passed, c.dangerous_http_methods.detail)}
-
-      ${vulnsHtml}
-    `;
+    result.innerHTML = renderScanResult(data, formatDateFr(data.scanned_at));
   } catch (err) {
-    result.innerHTML = `<p style="color:var(--red)">Erreur : ${escapeHtml(err.message)}</p>`;
+    result.innerHTML = `<p style="color:var(--fault); font-family:var(--font-mono);">${escapeHtml(err.message)}</p>`;
   } finally {
     loading.style.display = "none";
   }
