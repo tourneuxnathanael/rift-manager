@@ -5,6 +5,7 @@ Backend FastAPI : authentification, scans de sécurité avec historique en base.
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 import httpx
 import ssl
@@ -19,6 +20,7 @@ import models
 import schemas
 import auth
 import email_utils
+import pdf_report
 
 app = FastAPI(title="Rift Manager Security Scanner", version="1.0.0")
 
@@ -45,6 +47,7 @@ class ScanRequest(BaseModel):
 
 
 class ScanResult(BaseModel):
+    id: int | None = None
     target: str
     score: int
     grade: str
@@ -768,9 +771,12 @@ async def scan(
     )
     db.add(record)
     db.commit()
+    db.refresh(record)
 
     # 4. Masquer le détail des vulnérabilités si plan gratuit (la donnée complète reste en base)
-    return apply_plan_redaction(result.model_dump(), plan)
+    result_dict = result.model_dump()
+    result_dict["id"] = record.id
+    return apply_plan_redaction(result_dict, plan)
 
 
 @app.get("/usage")
@@ -824,7 +830,40 @@ def scan_detail(
         raise HTTPException(status_code=404, detail="Scan introuvable")
 
     plan = current_user.plan or "free"
-    return apply_plan_redaction(record.result_json, plan)
+    result_dict = dict(record.result_json)
+    result_dict["id"] = record.id
+    return apply_plan_redaction(result_dict, plan)
+
+
+@app.get("/scans/history/{scan_id}/pdf")
+def scan_detail_pdf(
+    scan_id: int,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: Session = Depends(get_db),
+):
+    plan = current_user.plan or "free"
+    if plan != "pro":
+        raise HTTPException(
+            status_code=403,
+            detail="L'export PDF est réservé au plan Pro. Passe au plan Pro pour télécharger tes rapports.",
+        )
+
+    record = (
+        db.query(models.ScanRecord)
+        .filter(models.ScanRecord.id == scan_id, models.ScanRecord.user_id == current_user.id)
+        .first()
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="Scan introuvable")
+
+    pdf_bytes = pdf_report.build_scan_pdf(record.result_json)
+    filename = f"rift-manager-{record.target}-{record.id}.pdf".replace(" ", "-")
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/")

@@ -260,8 +260,48 @@ function renderVulnsSection(vulns) {
 function renderScanResult(data, dateLabel) {
   return `
     ${buildScoreCard(data.target, data.score, data.grade, dateLabel)}
+    ${data.id ? buildPdfButton(data.id) : ""}
     <div class="section-title">Résumé des contrôles</div>
     ${renderChecksSummary(data.checks)}
     ${renderVulnsSection(data.vulnerabilities)}
   `;
+}
+
+function buildPdfButton(scanId) {
+  return `
+    <div style="text-align:center; margin: -10px 0 24px 0;">
+      <button onclick="downloadScanPdf(${scanId}, this)" class="btn-secondary" style="font-size:0.74rem; padding:9px 16px;">
+        ⬇ Télécharger le rapport PDF
+      </button>
+    </div>
+  `;
+}
+
+// Télécharge le PDF d'un scan (réservé au plan Pro côté backend).
+// Le endpoint exige un header Authorization, donc on passe par fetch + blob
+// plutôt qu'un lien <a href> classique.
+async function downloadScanPdf(scanId, btnEl) {
+  const originalText = btnEl ? btnEl.textContent : "";
+  if (btnEl) { btnEl.disabled = true; btnEl.textContent = "Génération..."; }
+
+  try {
+    const resp = await apiFetch(`/scans/history/${scanId}/pdf`);
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({}));
+      throw new Error(errData.detail || "Impossible de générer le PDF");
+    }
+    const blob = await resp.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `rift-manager-rapport-${scanId}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = originalText; }
+  }
 }
