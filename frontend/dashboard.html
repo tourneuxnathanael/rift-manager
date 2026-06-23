@@ -14,6 +14,8 @@
   <h1>Lancer un audit de sécurité</h1>
   <p class="subtitle">Entre une URL pour scanner les 10 contrôles de sécurité.</p>
 
+  <div id="usageBanner" class="card" style="padding:14px 18px; margin-bottom:20px;"></div>
+
   <div class="scan-box">
     <input type="text" id="urlInput" placeholder="exemple.com" />
     <button id="scanBtn" onclick="runScan()">Scanner</button>
@@ -76,6 +78,35 @@ function renderVuln(v) {
   `;
 }
 
+async function loadUsage() {
+  const banner = document.getElementById("usageBanner");
+  try {
+    const resp = await apiFetch("/usage");
+    if (!resp.ok) return;
+    const u = await resp.json();
+
+    const scansText = u.scans_limit === null
+      ? "Scans illimités"
+      : `${u.scans_this_month}/${u.scans_limit} scans ce mois-ci`;
+    const domainsText = `${u.domains_count}/${u.domains_limit} domaine(s) utilisé(s)`;
+    const planLabel = u.plan === "pro" ? "Plan Pro" : "Plan Gratuit";
+
+    banner.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div>
+          <strong>${planLabel}</strong>
+          <span style="color:var(--muted); margin-left:10px;">${scansText} · ${domainsText}</span>
+        </div>
+        ${u.plan === "free" ? `<a href="pricing.html" class="btn" style="padding:8px 14px; font-size:0.85rem;">Passer au plan Pro</a>` : ""}
+      </div>
+    `;
+  } catch (err) {
+    banner.style.display = "none";
+  }
+}
+
+loadUsage();
+
 async function runScan() {
   const url = document.getElementById("urlInput").value.trim();
   if (!url) return;
@@ -136,6 +167,7 @@ async function runScan() {
       ${vulnsHtml}
     `;
     result.style.display = "block";
+    loadUsage();
   } catch (err) {
     result.innerHTML = `<p style="color:var(--red)">Erreur : ${err.message}</p>`;
     result.style.display = "block";

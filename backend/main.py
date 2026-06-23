@@ -678,6 +678,47 @@ def delete_me(current_user: models.User = Depends(auth.get_current_user), db: Se
     return {"status": "ok", "detail": "Compte supprimé"}
 
 
+# ---------- Limites par plan ----------
+
+PLAN_SCAN_LIMIT_PER_MONTH = {"free": 5, "pro": None}  # None = illimité
+PLAN_DOMAIN_LIMIT = {"free": 1, "pro": 5}
+
+
+def get_month_start() -> datetime:
+    now = datetime.now(timezone.utc)
+    return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+def get_scans_this_month(db: Session, user_id: int) -> int:
+    return (
+        db.query(models.ScanRecord)
+        .filter(models.ScanRecord.user_id == user_id, models.ScanRecord.created_at >= get_month_start())
+        .count()
+    )
+
+
+def get_used_domains(db: Session, user_id: int) -> list[str]:
+    rows = db.query(models.ScanRecord.target).filter(models.ScanRecord.user_id == user_id).distinct().all()
+    return [r[0] for r in rows]
+
+
+def redact_vuln_for_free_plan(vuln: dict) -> dict:
+    """Masque le détail (risque, recommandation, preuve) pour le plan gratuit.
+    Le titre et la sévérité restent visibles pour montrer qu'un problème existe."""
+    redacted = dict(vuln)
+    redacted["risk"] = "🔒 Détail disponible avec le plan Pro"
+    redacted["recommendation"] = "🔒 Recommandation disponible avec le plan Pro"
+    redacted["evidence"] = ""
+    return redacted
+
+
+def apply_plan_redaction(result_dict: dict, plan: str) -> dict:
+    if plan == "free":
+        result_dict = dict(result_dict)
+        result_dict["vulnerabilities"] = [redact_vuln_for_free_plan(v) for v in result_dict.get("vulnerabilities", [])]
+    return result_dict
+
+
 # ---------- Endpoint de scan (protégé) ----------
 
 @app.post("/scan", response_model=ScanResult)
@@ -686,6 +727,36 @@ async def scan(
     current_user: models.User = Depends(auth.get_current_user),
     db: Session = Depends(get_db),
 ):
+    plan = current_user.plan or "free"
+
+    # 1. Vérifier le quota de scans mensuels
+    scan_limit = PLAN_SCAN_LIMIT_PER_MONTH.get(plan, 5)
+    if scan_limit is not None:
+        scans_done = get_scans_this_month(db, current_user.id)
+        if scans_done >= scan_limit:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Limite de {scan_limit} scans/mois atteinte pour le plan gratuit. Passe au plan Pro pour des scans illimités.",
+            )
+
+    # 2. Vérifier la limite de domaines autorisés
+    normalized = normalize_url(request.url)
+    parsed = urlparse(normalized)
+    target_domain = parsed.netloc or parsed.path
+
+    domain_limit = PLAN_DOMAIN_LIMIT.get(plan, 1)
+    used_domains = get_used_domains(db, current_user.id)
+    if target_domain not in used_domains and len(used_domains) >= domain_limit:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Tu as atteint la limite de {domain_limit} domaine(s) autorisé(s) pour ton plan. "
+                f"Domaine(s) déjà utilisé(s) : {', '.join(used_domains)}. "
+                "Passe au plan Pro pour scanner jusqu'à 5 domaines différents."
+            ),
+        )
+
+    # 3. Lancer le scan réel
     result = await run_full_scan(request.url)
 
     record = models.ScanRecord(
@@ -698,7 +769,29 @@ async def scan(
     db.add(record)
     db.commit()
 
-    return result
+    # 4. Masquer le détail des vulnérabilités si plan gratuit (la donnée complète reste en base)
+    return apply_plan_redaction(result.model_dump(), plan)
+
+
+@app.get("/usage")
+def get_usage(
+    current_user: models.User = Depends(auth.get_current_user),
+    db: Session = Depends(get_db),
+):
+    plan = current_user.plan or "free"
+    used_domains = get_used_domains(db, current_user.id)
+    scans_done = get_scans_this_month(db, current_user.id)
+    scan_limit = PLAN_SCAN_LIMIT_PER_MONTH.get(plan)
+    domain_limit = PLAN_DOMAIN_LIMIT.get(plan, 1)
+
+    return {
+        "plan": plan,
+        "scans_this_month": scans_done,
+        "scans_limit": scan_limit,  # null = illimité
+        "domains_used": used_domains,
+        "domains_count": len(used_domains),
+        "domains_limit": domain_limit,
+    }
 
 
 @app.get("/scans/history", response_model=list[schemas.ScanHistoryItem])
@@ -729,7 +822,9 @@ def scan_detail(
     )
     if not record:
         raise HTTPException(status_code=404, detail="Scan introuvable")
-    return record.result_json
+
+    plan = current_user.plan or "free"
+    return apply_plan_redaction(record.result_json, plan)
 
 
 @app.get("/")
